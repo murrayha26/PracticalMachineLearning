@@ -1,0 +1,139 @@
+---
+title: 'Practical Machine Learning Peer Graded Project: Prediction Writeup'
+author: "Howard Murray"
+date: "2024-10-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+This document represents a demonstration of my understanding of the topics covered in the *Coursera Practical Machine Learning* course. This project was completed using *R Version 4.4.1* in *RStudio version 2024.09.0*.
+
+The goal of this project is to use data from various accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform 10 repetitions of unilateral dumbbell biceps curls correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har>. The manner in which the exercises were conducted is coded below: 
+
+**Class A** - exactly according to the specification\
+**Class B** - throwing the elbows to the front\
+**Class C** - lifting the dumbbell only halfway\
+**Class D** - lowering the dumbbell only halfway\
+**Class E** - throwing the hips to the front\
+
+We were supplied with both training and testing data sets. We are to collect and analyze the training data set and develop a prediction model that we are to apply to the test data set in order to predict the manner in which the 20 test cases performed the exercises. This is represented by the **"classe"** variable. Any of the other variables in the data set can be used to formulate the model. 
+
+# Provided Data 
+The training data for this project are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv> 
+
+The test data are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv> 
+
+# Data Wrangling and Cleaning 
+
+Before any analysis can be done, the data must be imported and cleaned. 
+
+```{r, fig.align= "center", fig.height=4, fig.width=6, echo=TRUE}
+library(caret); library(rpart); library(corrplot); library(rattle); library(data.table)
+
+# Load the training and testing data sets.
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method = "curl")
+train.data <- read.csv("pml-training.csv")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method = "curl")
+test.data <- read.csv("pml-testing.csv")
+
+dim(train.data)
+dim(test.data)
+
+```
+Upon examination, both data sets have 160 variables. These variables contain many missing values and NA's that will need to to be removed. It is also very likely that a number of the variables included will be of the near zero variance and thus provide no useful information for the model that we are seeking to build. These variables should be removed too. 
+
+
+```{r, fig.align= "center", fig.height=4, fig.width=6, echo=TRUE}
+# Remove variables containing mostly NAs.
+train.data <- train.data[, colMeans(is.na(train.data)) < .9]
+dim(train.data)
+
+```
+
+```{r, echo=TRUE}
+# Remove near zero variance variables
+nzv <- nearZeroVar(train.data)
+train.data <- train.data[, -nzv]
+dim(train.data)
+
+```
+```{r,echo=TRUE}
+#First five columns contain identifier and date/time stamp info that are not useful for the purpose of prediction, so I removed them
+train.data <- train.data[, -(1:5)]
+dim(train.data)
+
+```
+*Split the training data set into a training data set and a validation data set*. The test data set denoted as **test.data** will be untouched. The final model will be applied to it in order to generate our predictions. 
+
+```{r, fig.align= "center", fig.height=4, fig.width=6, echo=TRUE}
+set.seed(1970) # Set seed to ensure reproducibility
+inTrain <- createDataPartition(train.data$classe, p = 0.7, list = FALSE)
+train.data <- train.data[inTrain, ]
+validation.data <- train.data[-inTrain, ]
+
+```
+
+The data cleaning procedure was able to reduce the number of variables from 160 to 54. 
+
+# Exploratory Analysis 
+
+Let's take a look at the relationship between the variables. A strong positive correlation is denoted by blue. A strong negative correlation is signified by red. 
+
+```{r, fig.align= "center", fig.height=6, fig.width=6, echo=TRUE}
+train.corr <- cor(train.data[, -54])
+corrplot(train.corr, type = "upper", order = "FPC", tl.cex = .5, tl.col = "black")
+
+```
+
+# Model Building 
+
+We will build prediction models using the training data and the following methods: *Generalized Boosted Model* and *Random Forest*. A confusion matrix is generated after each model to determine highest accuracy. I applied the same settings for the *trainControl* function to determine which method gave the best performance. The model with the highest accuracy rate will be applied the *test.data* prediction set. 
+
+## Generalized Boosted Model 
+ The Generalized Boosted Model yielded an accuracy of **99.46%** and a sample error rate of **0.54%**. 
+
+```{r, echo=TRUE}
+
+# Generalized Boosted Model and associated Confusion Matrix
+modGBM <- train(classe ~., data = train.data, method = "gbm", trControl = trainControl(method = "cv", number = 5), verbose = FALSE)
+predict.gbm <- predict(modGBM, newdata = validation.data)
+confMatrix.gbm <- confusionMatrix(table(predict.gbm, validation.data$classe))
+
+#Print Confusion Matrix for Generalized Boosted Model
+confMatrix.gbm
+
+```
+## Random Forest Model 
+
+The Random Forest model yielded an accuracy of **100%** and an sample error rate of **0%**. The Random Forest model had the highest accuracy rate. Therefore, I will apply the Random Forest Model to the provided validation data provided in the file: *pml-testing.csv* denoted as **test.data** in my code. 
+
+```{r, echo= TRUE}
+
+# Random Forest Model and associated Confusion Matrix
+modRF <- train(classe ~., data = train.data, method = "rf", trControl = trainControl(method = "cv", number = 5), verbose = FALSE)
+
+predict.rf <- predict(modRF, newdata = validation.data)
+confMatrix.rf <- confusionMatrix(table(predict.rf, validation.data$classe))
+
+#Print Confusion Matrix for Random Forest model
+confMatrix.rf
+
+```
+
+# Prediction 
+
+Applying the Random Forest model on the **test.data** yielded the following results. 
+
+```{r, echo=TRUE}
+pred <- predict(modRF, test.data)
+pred
+
+```
